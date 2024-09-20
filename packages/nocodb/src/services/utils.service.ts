@@ -1,37 +1,38 @@
-import process from 'process';
-import { Injectable } from '@nestjs/common';
-import axios from 'axios';
-import { compareVersions, validate } from 'compare-versions';
-import { ViewTypes } from 'nocodb-sdk';
-import { ConfigService } from '@nestjs/config';
-import { useAgent } from 'request-filtering-agent';
-import type { AppConfig } from '~/interface/config';
-import { NC_APP_SETTINGS, NC_ATTACHMENT_FIELD_SIZE } from '~/constants';
-import SqlMgrv2 from '~/db/sql-mgr/v2/SqlMgrv2';
-import { NcError } from '~/helpers/catchError';
-import { Base, Store, User } from '~/models';
-import Noco from '~/Noco';
-import NcConnectionMgrv2 from '~/utils/common/NcConnectionMgrv2';
-import getInstance from '~/utils/getInstance';
-import { MetaTable, RootScopes } from '~/utils/globals';
-import { jdbcToXcConfig } from '~/utils/nc-config/helpers';
-import { packageVersion } from '~/utils/packageVersion';
+import process from 'process'
+import { Injectable } from '@nestjs/common'
+import axios from 'axios'
+import { compareVersions, validate } from 'compare-versions'
+import { ErrorReportReqType, ViewTypes } from 'nocodb-sdk'
+import { ConfigService } from '@nestjs/config'
+import { useAgent } from 'request-filtering-agent'
+import type { AppConfig, NcRequest } from '~/interface/config'
+import { NC_APP_SETTINGS, NC_ATTACHMENT_FIELD_SIZE } from '~/constants'
+import SqlMgrv2 from '~/db/sql-mgr/v2/SqlMgrv2'
+import { NcError } from '~/helpers/catchError'
+import { Base, Store, User } from '~/models'
+import Noco from '~/Noco'
+import { T } from '~/utils'
+import NcConnectionMgrv2 from '~/utils/common/NcConnectionMgrv2'
+import getInstance from '~/utils/getInstance'
+import { MetaTable, RootScopes } from '~/utils/globals'
+import { jdbcToXcConfig } from '~/utils/nc-config/helpers'
+import { packageVersion } from '~/utils/packageVersion'
 import {
   defaultGroupByLimitConfig,
   defaultLimitConfig,
-} from '~/helpers/extractLimitAndOffset';
-import { DriverClient } from '~/utils/nc-config';
+} from '~/helpers/extractLimitAndOffset'
+import { DriverClient } from '~/utils/nc-config'
 
 const versionCache = {
   releaseVersion: null,
   lastFetched: null,
-};
+}
 
 const defaultConnectionConfig: any = {
   // https://github.com/knex/knex/issues/97
   // timezone: process.env.NC_TIMEZONE || 'UTC',
   dateStrings: true,
-};
+}
 
 interface ViewCount {
   formCount: number | null;
@@ -51,27 +52,28 @@ interface AllMeta {
   baseCount: number;
   bases: (
     | {
-        external?: boolean | null;
-        tableCount: {
-          table: number;
-          view: number;
-        } | null;
-        viewCount: ViewCount;
-        webhookCount: number | null;
-        filterCount: number | null;
-        sortCount: number | null;
-        rowCount: ({ totalRecords: number } | null)[] | null;
-        userCount: number | null;
-      }
+    external?: boolean | null;
+    tableCount: {
+      table: number;
+      view: number;
+    } | null;
+    viewCount: ViewCount;
+    webhookCount: number | null;
+    filterCount: number | null;
+    sortCount: number | null;
+    rowCount: ({ totalRecords: number } | null)[] | null;
+    userCount: number | null;
+  }
     | { error: string }
-  )[];
+    )[];
   userCount: number;
   sharedBaseCount: number;
 }
 
 @Injectable()
 export class UtilsService {
-  constructor(protected readonly configService: ConfigService<AppConfig>) {}
+  constructor(protected readonly configService: ConfigService<AppConfig>) {
+  }
 
   async versionInfo() {
     if (
@@ -89,21 +91,21 @@ export class UtilsService {
             .filter(
               (v) => validate(v) && !v.includes('finn') && !v.includes('beta'),
             )
-            .sort((x, y) => compareVersions(y, x));
+            .sort((x, y) => compareVersions(y, x))
         })
-        .catch(() => null);
+        .catch(() => null)
       if (nonBetaTags && nonBetaTags.length > 0) {
-        versionCache.releaseVersion = nonBetaTags[0];
+        versionCache.releaseVersion = nonBetaTags[0]
       }
-      versionCache.lastFetched = Date.now();
+      versionCache.lastFetched = Date.now()
     }
 
     const response = {
       currentVersion: packageVersion,
       releaseVersion: versionCache.releaseVersion,
-    };
+    }
 
-    return response;
+    return response
   }
 
   async appHealth() {
@@ -111,7 +113,7 @@ export class UtilsService {
       message: 'OK',
       timestamp: Date.now(),
       uptime: process.uptime(),
-    };
+    }
   }
 
   async _axiosRequestMake(param: {
@@ -119,44 +121,44 @@ export class UtilsService {
       apiMeta: any;
     };
   }) {
-    const { apiMeta } = param.body;
+    const { apiMeta } = param.body
 
     if (apiMeta?.body) {
       try {
-        apiMeta.body = JSON.parse(apiMeta.body);
+        apiMeta.body = JSON.parse(apiMeta.body)
       } catch (e) {
-        console.log(e);
+        console.log(e)
       }
     }
 
     if (apiMeta?.auth) {
       try {
-        apiMeta.auth = JSON.parse(apiMeta.auth);
+        apiMeta.auth = JSON.parse(apiMeta.auth)
       } catch (e) {
-        console.log(e);
+        console.log(e)
       }
     }
 
-    apiMeta.response = {};
+    apiMeta.response = {}
     const _req = {
       params: apiMeta.parameters
         ? apiMeta.parameters.reduce((paramsObj, param) => {
-            if (param.name && param.enabled) {
-              paramsObj[param.name] = param.value;
-            }
-            return paramsObj;
-          }, {})
+          if (param.name && param.enabled) {
+            paramsObj[param.name] = param.value
+          }
+          return paramsObj
+        }, {})
         : {},
       url: apiMeta.url,
       method: apiMeta.method || 'GET',
       data: apiMeta.body || {},
       headers: apiMeta.headers
         ? apiMeta.headers.reduce((headersObj, header) => {
-            if (header.name && header.enabled) {
-              headersObj[header.name] = header.value;
-            }
-            return headersObj;
-          }, {})
+          if (header.name && header.enabled) {
+            headersObj[header.name] = header.value
+          }
+          return headersObj
+        }, {})
         : {},
       responseType: apiMeta.responseType || 'json',
       withCredentials: true,
@@ -166,9 +168,9 @@ export class UtilsService {
       httpsAgent: useAgent(apiMeta.url, {
         stopPortScanningByUrlRedirection: true,
       }),
-    };
-    const data = await axios(_req);
-    return data?.data;
+    }
+    const data = await axios(_req)
+    return data?.data
   }
 
   async axiosRequestMake(param: {
@@ -178,23 +180,23 @@ export class UtilsService {
   }) {
     const {
       apiMeta: { url },
-    } = param.body;
-    const isExcelImport = /.*\.(xls|xlsx|xlsm|ods|ots)/;
-    const isCSVImport = /.*\.(csv)/;
+    } = param.body
+    const isExcelImport = /.*\.(xls|xlsx|xlsm|ods|ots)/
+    const isCSVImport = /.*\.(csv)/
     const ipBlockList =
-      /(10)(\.([2]([0-5][0-5]|[01234][6-9])|[1][0-9][0-9]|[1-9][0-9]|[0-9])){3}|(172)\.(1[6-9]|2[0-9]|3[0-1])(\.(2[0-4][0-9]|25[0-5]|[1][0-9][0-9]|[1-9][0-9]|[0-9])){2}|(192)\.(168)(\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])){2}|(0.0.0.0)|localhost?/g;
+      /(10)(\.([2]([0-5][0-5]|[01234][6-9])|[1][0-9][0-9]|[1-9][0-9]|[0-9])){3}|(172)\.(1[6-9]|2[0-9]|3[0-1])(\.(2[0-4][0-9]|25[0-5]|[1][0-9][0-9]|[1-9][0-9]|[0-9])){2}|(192)\.(168)(\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])){2}|(0.0.0.0)|localhost?/g
     if (
       ipBlockList.test(url) ||
       (!isCSVImport.test(url) && !isExcelImport.test(url))
     ) {
-      return {};
+      return {}
     }
     if (isCSVImport || isExcelImport) {
-      param.body.apiMeta.responseType = 'arraybuffer';
+      param.body.apiMeta.responseType = 'arraybuffer'
     }
     return await this._axiosRequestMake({
       body: param.body,
-    });
+    })
   }
 
   async urlToDbConfig(param: {
@@ -202,14 +204,14 @@ export class UtilsService {
       url: string;
     };
   }) {
-    const { url } = param.body;
+    const { url } = param.body
     try {
-      const connectionConfig = jdbcToXcConfig(url);
-      return connectionConfig;
+      const connectionConfig = jdbcToXcConfig(url)
+      return connectionConfig
     } catch (error) {
       return NcError.internalServerError(
         'Please check server log for more details',
-      );
+      )
     }
   }
 
@@ -218,20 +220,20 @@ export class UtilsService {
     const [bases, userCount] = await Promise.all([
       Base.list(),
       Noco.ncMeta.metaCount(RootScopes.ROOT, RootScopes.ROOT, MetaTable.USERS),
-    ]);
+    ])
 
     const result: AllMeta = {
       baseCount: bases.length,
       bases: [],
       userCount,
       sharedBaseCount: 0,
-    };
+    }
 
     result.bases.push(
       ...this.extractResultOrNull(
         await Promise.allSettled(
           bases.map(async (base) => {
-            if (base.uuid) result.sharedBaseCount++;
+            if (base.uuid) result.sharedBaseCount++
             const [
               tableCount,
               dbViewCount,
@@ -271,36 +273,36 @@ export class UtilsService {
                     base.fk_workspace_id,
                     base.id,
                     MetaTable.VIEWS,
-                  );
+                  )
                   // grid, form, gallery, kanban and shared count
                   return (views as any[]).reduce<ViewCount>(
                     (out, view) => {
-                      out.total++;
+                      out.total++
 
                       switch (view.type) {
                         case ViewTypes.GRID:
-                          out.gridCount++;
-                          if (view.uuid) out.sharedGridCount++;
-                          break;
+                          out.gridCount++
+                          if (view.uuid) out.sharedGridCount++
+                          break
                         case ViewTypes.FORM:
-                          out.formCount++;
-                          if (view.uuid) out.sharedFormCount++;
-                          break;
+                          out.formCount++
+                          if (view.uuid) out.sharedFormCount++
+                          break
                         case ViewTypes.GALLERY:
-                          out.galleryCount++;
-                          if (view.uuid) out.sharedGalleryCount++;
-                          break;
+                          out.galleryCount++
+                          if (view.uuid) out.sharedGalleryCount++
+                          break
                         case ViewTypes.KANBAN:
-                          out.kanbanCount++;
-                          if (view.uuid) out.sharedKanbanCount++;
+                          out.kanbanCount++
+                          if (view.uuid) out.sharedKanbanCount++
                       }
 
                       if (view.uuid) {
-                        if (view.password) out.sharedLockedCount++;
-                        out.sharedTotal++;
+                        if (view.password) out.sharedLockedCount++
+                        out.sharedTotal++
                       }
 
-                      return out;
+                      return out
                     },
                     {
                       formCount: 0,
@@ -315,7 +317,7 @@ export class UtilsService {
                       sharedTotal: 0,
                       sharedLockedCount: 0,
                     },
-                  );
+                  )
                 })(),
                 // webhooks count
                 Noco.ncMeta.metaCount(
@@ -345,7 +347,7 @@ export class UtilsService {
                           ?.then((result) => result?.data),
                       ),
                     ),
-                  );
+                  )
                 }),
                 // base users count
                 Noco.ncMeta.metaCount(
@@ -360,7 +362,7 @@ export class UtilsService {
                   },
                 ),
               ]),
-            );
+            )
 
             return {
               tableCount: { table: tableCount, view: dbViewCount },
@@ -371,57 +373,58 @@ export class UtilsService {
               sortCount,
               rowCount,
               userCount,
-            };
+            }
           }),
         ),
       ),
-    );
+    )
 
-    return result;
+    return result
   }
 
   extractResultOrNull = (results: PromiseSettledResult<any>[]) => {
     return results.map((result) => {
       if (result.status === 'fulfilled') {
-        return result.value;
+        return result.value
       }
-      console.log(result.reason);
-      return null;
-    });
-  };
+      console.log(result.reason)
+      return null
+    })
+  }
 
   async testConnection(param: { body: any }) {
-    return await SqlMgrv2.testConnection(param.body);
+    return await SqlMgrv2.testConnection(param.body)
   }
 
   async appInfo(param: { req: { ncSiteUrl: string } }) {
-    const baseHasAdmin = !(await User.isFirst());
-    const instance = await getInstance();
+    const baseHasAdmin = !(await User.isFirst())
+    const instance = await getInstance()
 
-    let settings: { invite_only_signup?: boolean } = {};
+    let settings: { invite_only_signup?: boolean } = {}
     try {
-      settings = JSON.parse((await Store.get(NC_APP_SETTINGS, true))?.value);
-    } catch {}
+      settings = JSON.parse((await Store.get(NC_APP_SETTINGS, true))?.value)
+    } catch {
+    }
 
     const oidcAuthEnabled = ['openid', 'oidc'].includes(
       process.env.NC_SSO?.toLowerCase(),
-    );
+    )
     const oidcProviderName = oidcAuthEnabled
       ? process.env.NC_OIDC_PROVIDER_NAME ?? 'OpenID Connect'
-      : null;
+      : null
 
-    let giftUrl: string;
+    let giftUrl: string
 
     if (instance.impacted >= 5) {
       giftUrl = `https://w21dqb1x.nocodb.com/#/nc/form/4d2e0e4b-df97-4c5e-ad8e-f8b8cca90330?Users=${
         instance.impacted
-      }&Bases=${instance.projectsExt + instance.projectsMeta}`;
+      }&Bases=${instance.projectsExt + instance.projectsMeta}`
     }
 
-    const samlAuthEnabled = process.env.NC_SSO?.toLowerCase() === 'saml';
+    const samlAuthEnabled = process.env.NC_SSO?.toLowerCase() === 'saml'
     const samlProviderName = samlAuthEnabled
       ? process.env.NC_SSO_SAML_PROVIDER_NAME ?? 'SAML'
-      : null;
+      : null
 
     const result = {
       authType: 'jwt',
@@ -449,6 +452,10 @@ export class UtilsService {
       ncMin: !!process.env.NC_MIN,
       teleEnabled: process.env.NC_DISABLE_TELE !== 'true',
       errorReportingEnabled: process.env.NC_DISABLE_ERR_REPORTS !== 'true',
+      sentryDSN:
+        process.env.NC_DISABLE_ERR_REPORTS !== 'true'
+          ? process.env.NC_SENTRY_DSN
+          : null,
       auditEnabled: process.env.NC_DISABLE_AUDIT !== 'true',
       ncSiteUrl: (param.req as any).ncSiteUrl,
       ee: Noco.isEE(),
@@ -467,8 +474,20 @@ export class UtilsService {
       samlAuthEnabled,
       giftUrl,
       prodReady: Noco.getConfig()?.meta?.db?.client !== DriverClient.SQLITE,
-    };
+    }
 
-    return result;
+    return result
+  }
+
+  async reportErrors(param: { body: ErrorReportReqType; req: NcRequest }) {
+    for (const error of param.body?.errors ?? []) {
+      T.emit('evt', {
+        evt_type: 'gui:error', properties: {
+          message: error.message,
+          stack: error.stack?.split('\n').slice(0, 2).join('\n'),
+          ...(param.body.extra || {}),
+        },
+      })
+    }
   }
 }
